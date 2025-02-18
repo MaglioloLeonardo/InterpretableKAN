@@ -13,18 +13,7 @@ This repository explores **Kolmogorov-Arnold Networks (KANs)** in deep learning,
 
 ## 📌 Experiments
 
-### 🔹 1. Fully Connected KANs vs. MLPs
-**Goal:** Compare standard MLPs (LeNet-300) with KAN-based models (KaNet-300) on MNIST to analyze performance and generalization.
-
-✅ KANs match or exceed standard networks while using fewer layers.  
-✅ Splines help reduce overfitting and improve feature representation.  
-
-#### **MLP vs. KAN Representation**
-![MLP vs KAN](https://raw.githubusercontent.com/MaglioloLeonardo/InterpretableKAN/main/Images%20%26%20Videos/MLP_vs_KAN.png)
-
----
-
-### 🔹 2. Convolutional KANs vs. CNNs
+### 🔹 1. Convolutional KANs vs. CNNs
 **Goal:** Evaluate convolutional KANs (KaNet-5) against standard CNNs (LeNet-5) on EMNIST using **Grad-CAM** interpretability analysis.
 
 ✅ KAN filters dynamically adapt to complex patterns.  
@@ -35,15 +24,7 @@ This repository explores **Kolmogorov-Arnold Networks (KANs)** in deep learning,
 
 ---
 
-### 🔹 3. PCA-Based Feature Representation
-**Goal:** Use PCA to compare how standard networks and KANs encode learned feature distributions.
-
-#### **PCA Visualization**
-![PCA](https://raw.githubusercontent.com/MaglioloLeonardo/InterpretableKAN/main/Images%20%26%20Videos/PCADemo.png)
-
----
-
-### 🔹 4. Spline Evolution in KANs
+### 🔹 2. Spline Evolution in KANs
 **Goal:** Visualize how spline-based transformations evolve during training.
 
 ✅ Splines adjust dynamically, offering localized feature adaptation.  
@@ -51,6 +32,25 @@ This repository explores **Kolmogorov-Arnold Networks (KANs)** in deep learning,
 
 #### **Visualization of Spline Evolution**
 ![Spline Evolution](https://raw.githubusercontent.com/MaglioloLeonardo/InterpretableKAN/main/Images%20%26%20Videos/DemoSplineEvolution.gif)
+
+---
+
+### 🔹 3. Fully Connected KANs vs. MLPs
+**Goal:** Compare standard MLPs (LeNet-300) with KAN-based models (KaNet-300) on MNIST to analyze performance and generalization.
+
+✅ KANs match or exceed standard networks while using fewer layers.  
+✅ Splines help reduce overfitting and improve feature representation.  
+
+#### **MLP vs. KAN Representation**
+![MLP vs KAN](https://raw.githubusercontent.com/MaglioloLeonardo/InterpretableKAN/main/Images%20%26%20Videos/MLP_vs_KAN.png)
+
+---
+
+### 🔹 4. PCA-Based Feature Representation
+**Goal:** Use PCA to compare how standard networks and KANs encode learned feature distributions.
+
+#### **PCA Visualization**
+![PCA](https://raw.githubusercontent.com/MaglioloLeonardo/InterpretableKAN/main/Images%20%26%20Videos/PCADemo.png)
 
 ---
 

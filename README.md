@@ -10,7 +10,7 @@
 
 <h2>🚀 About This Repository</h2>
 <p>
-This repository explores the use of <b>Kolmogorov-Arnold Networks (KANs)</b> in deep learning, focusing on their <b>interpretability and effectiveness</b> 
+This repository explores <b>Kolmogorov-Arnold Networks (KANs)</b> in deep learning, focusing on their <b>interpretability and effectiveness</b> 
 compared to traditional architectures. The project includes multiple experiments evaluating KANs in both <b>fully connected and convolutional settings</b>, 
 with visualization techniques like <b>Grad-CAM</b> and <b>PCA</b> to better understand their decision-making process.
 </p>
@@ -51,7 +51,7 @@ Key areas of investigation:
 </ul>
 
 <p><b>Grad-CAM Visualization:</b></p>
-<img src="https://raw.githubusercontent.com/MaglioloLeonardo/InterpretableKAN/main/DemoGradCAMFeatureMAPExample.gif" width="600" autoplay loop alt="GradCAM Visualization">
+<img src="https://raw.githubusercontent.com/MaglioloLeonardo/InterpretableKAN/main/DemoGradCAMFeatureMAPExample.gif" width="600" alt="GradCAM Visualization">
 
 <hr>
 
@@ -74,7 +74,7 @@ Key areas of investigation:
 </ul>
 
 <p><b>Visualization of Spline Evolution:</b></p>
-<img src="https://raw.githubusercontent.com/MaglioloLeonardo/InterpretableKAN/main/DemoSplineEvolution.gif" width="600" autoplay loop alt="Spline Evolution">
+<img src="https://raw.githubusercontent.com/MaglioloLeonardo/InterpretableKAN/main/DemoSplineEvolution.gif" width="600" alt="Spline Evolution">
 
 <hr>
 

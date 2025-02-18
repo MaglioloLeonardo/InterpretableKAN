@@ -1,0 +1,7 @@
+python Kan_Generator.py --learning_rate 0.01 --norm_type None --optimizer_type SGD --batch_size 16 --epochs 50 --grid_size 5 --spline_order 3  # COMPLETED
+python Kan_Generator.py --learning_rate 0.01 --norm_type L1 --optimizer_type SGD --batch_size 16 --epochs 50 --grid_size 5 --spline_order 3  # COMPLETED
+python Kan_Generator.py --learning_rate 0.01 --norm_type L2 --optimizer_type SGD --batch_size 16 --epochs 50 --grid_size 5 --spline_order 3  # COMPLETED
+python Kan_Generator.py --learning_rate 0.01 --norm_type None --optimizer_type SGD --batch_size 16 --epochs 50 --grid_size 1 --spline_order 1  # COMPLETED
+python Kan_Generator.py --learning_rate 0.01 --norm_type None --optimizer_type SGD --batch_size 16 --epochs 50 --grid_size 10 --spline_order 4  # COMPLETED
+python Kan_Generator.py --learning_rate 0.01 --norm_type None --optimizer_type SGD --batch_size 16 --epochs 50 --grid_size 100 --spline_order 10  # COMPLETED
+python Kan_Generator.py --learning_rate 0.01 --norm_type None --optimizer_type SGD --batch_size 16 --epochs 50 --grid_size 50 --spline_order 10  # COMPLETED

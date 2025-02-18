@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <title>EMNIST Total Combine Viewer</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #222;
+      color: #eee;
+      font-family: sans-serif;
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      margin: 20px 0;
+      gap: 10px;
+    }
+    #charInput {
+      width: 200px;
+      padding: 4px;
+      font-size: 16px;
+    }
+    button {
+      font-size: 16px;
+      padding: 5px 10px;
+      cursor: pointer;
+    }
+    /* Lo slider ora va da 0 a 1 (valori fra 0 e 1) */
+    #speedSlider {
+      width: 150px;
+    }
+    #speedValue {
+      font-size: 16px;
+      margin-left: 4px;
+    }
+    label {
+      font-size: 16px;
+    }
+    /* Contenitore per i gruppi 2x2 */
+    #groupsContainer {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 40px;
+    }
+    .groupContainer {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto auto;
+      gap: 6px;
+      margin-bottom: 12px; /* spazio tra i gruppi */
+    }
+    .videoCell {
+      background-color: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-width: 180px;
+      min-height: 180px;
+    }
+    .videoCell video {
+      max-width: 400px;
+      border: 2px solid #444;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <input id="charInput" type="text" placeholder="Inserisci caratteri EMNIST" maxlength="100" />
+    <button id="loadBtn">Carica</button>
+    <label>
+      <input type="checkbox" id="autoLoopCheckbox" checked />
+      Auto-loop
+    </label>
+    <label>
+      Velocità:
+      <!-- Lo slider va da 0 a 1; valore predefinito 0.12 per circa 0.39 img/s -->
+      <input type="range" id="speedSlider" min="0" max="1" step="0.01" value="0.12" />
+      <span id="speedValue">0.39 img/s</span>
+    </label>
+    <button id="playPauseBtn">Pausa</button>
+    <button id="infoBtn">Info</button>
+  </header>
+
+  <div id="groupsContainer">
+    <!-- I gruppi 2x2 di video MP4 verranno inseriti qui -->
+  </div>
+
+  <script>
+    /************************************************
+     * Mappa EMNIST: char → classID (0..61)
+     ************************************************/
+    const EMNIST_MAPPING = (function(){
+      const chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+      let map = {};
+      for (let i = 0; i < chars.length; i++){
+        map[chars[i]] = i;
+      }
+      return map;
+    })();
+
+    // Array globale per conservare gli elementi video
+    let videos = [];
+    // La variabile speedFactor viene calcolata tramite il mapping quadratico:
+    // fps = 0.1 + (20 - 0.1) * (sliderValue)^2.
+    // Con sliderValue iniziale = 0.12, speedFactor ≈ 0.1 + 19.9*(0.12^2) ≈ 0.39 img/s.
+    let speedFactor = 0.1 + (20 - 0.1) * Math.pow(0.12, 2);
+    // Stato di auto-loop: play (true) o pausa (false)
+    let autoLoopActive = true;
+
+    /************************************************
+     * Costruisce il percorso del file MP4 total per
+     * una data classe e carattere.
+     * Il file si chiama: class_<cls>_<ch>_total.mp4
+     * (I file sono in ../total/)
+     ************************************************/
+    function buildTotalMp4Path(cls, ch) {
+      return `../total/class_${cls}_${ch}_total.mp4`;
+    }
+
+    /************************************************
+     * Crea un nuovo elemento <video> per la riproduzione del file MP4.
+     * Configura il video per ripartire da capo (con 2s di pausa)
+     * se l'auto-loop è abilitato.
+     ************************************************/
+    function createVideoElement(cls, ch) {
+      const video = document.createElement("video");
+      video.className = "mp4Video";
+      video.src = buildTotalMp4Path(cls, ch);
+      video.preload = "auto";
+      video.muted = true;
+      video.playsInline = true;
+      // Gestisce il termine della riproduzione: se auto-loop è attivo, attende 2s e poi riparte da capo.
+      video.addEventListener("ended", function() {
+        if(autoLoopActive) {
+          setTimeout(() => {
+            video.currentTime = 0;
+            video.play();
+          }, 2000);
+        }
+      });
+      // Imposta il playbackRate in base a speedFactor.
+      video.playbackRate = speedFactor;
+      video.addEventListener("loadeddata", function() {
+        video.play();
+      });
+      return video;
+    }
+
+    /************************************************
+     * Aggiorna il playbackRate di tutti i video.
+     ************************************************/
+    function updateAllVideosSpeed() {
+      videos.forEach(video => {
+        video.playbackRate = speedFactor;
+      });
+    }
+
+    /************************************************
+     * Avvia o ferma la riproduzione di tutti i video in base a autoLoopActive.
+     ************************************************/
+    function updateAllVideosPlayState() {
+      videos.forEach(video => {
+        if(autoLoopActive) {
+          video.play();
+        } else {
+          video.pause();
+        }
+      });
+    }
+
+    /************************************************
+     * Suddivide la stringa in gruppi di 4 caratteri.
+     * Ritorna un array di gruppi (ognuno è un array di al massimo 4 char).
+     ************************************************/
+    function groupCharacters(str) {
+      const groups = [];
+      for (let i = 0; i < str.length; i += 4) {
+        groups.push(str.slice(i, i + 4).split(''));
+      }
+      return groups;
+    }
+
+    /************************************************
+     * Carica i video MP4 total per una stringa di caratteri.
+     * Ogni gruppo di 4 viene disposto in una griglia 2x2.
+     * Se il gruppo è incompleto, le celle mancanti rimangono vuote.
+     * Questa funzione resetta completamente l'interfaccia e l'array globale dei video.
+     ************************************************/
+    function loadTotalVideosForString(str) {
+      const container = document.getElementById("groupsContainer");
+      container.innerHTML = "";
+      videos = [];
+      
+      let validChars = [];
+      for (let ch of str) {
+        if (ch in EMNIST_MAPPING) {
+          validChars.push(ch);
+        } else {
+          alert(`Carattere non valido: ${ch}`);
+          return;
+        }
+      }
+      if (validChars.length === 0) {
+        alert("Inserisci almeno un carattere EMNIST!");
+        return;
+      }
+      const groups = groupCharacters(validChars.join(''));
+      groups.forEach(group => {
+        const groupDiv = document.createElement("div");
+        groupDiv.className = "groupContainer";
+        for (let i = 0; i < 4; i++) {
+          const cellDiv = document.createElement("div");
+          cellDiv.className = "videoCell";
+          if (group[i] !== undefined) {
+            const ch = group[i];
+            const cls = EMNIST_MAPPING[ch];
+            const video = createVideoElement(cls, ch);
+            cellDiv.appendChild(video);
+            videos.push(video);
+          }
+          groupDiv.appendChild(cellDiv);
+        }
+        container.appendChild(groupDiv);
+      });
+      updateAllVideosSpeed();
+      updateAllVideosPlayState();
+    }
+
+    /************************************************
+     * Gestione degli eventi
+     ************************************************/
+    window.addEventListener("DOMContentLoaded", function(){
+      const charInput = document.getElementById("charInput");
+      const loadBtn = document.getElementById("loadBtn");
+      const speedSlider = document.getElementById("speedSlider");
+      const speedValue = document.getElementById("speedValue");
+      const playPauseBtn = document.getElementById("playPauseBtn");
+      const autoLoopCheckbox = document.getElementById("autoLoopCheckbox");
+      const infoBtn = document.getElementById("infoBtn");
+
+      // Stato di default: "0"
+      charInput.value = "0";
+      loadTotalVideosForString("0");
+
+      // Al click di "Carica": resetta l'interfaccia e imposta lo stato a play.
+      loadBtn.addEventListener("click", function(){
+        autoLoopActive = true;
+        autoLoopCheckbox.checked = true;
+        playPauseBtn.textContent = "Pausa";
+        const val = charInput.value.trim();
+        if(val === ""){
+          alert("Inserisci almeno un carattere EMNIST!");
+          return;
+        }
+        loadTotalVideosForString(val);
+      });
+
+      // Slider per la velocità: il valore dello slider (in [0,1]) viene mappato in modo non lineare.
+      speedSlider.addEventListener("input", function(){
+        let sliderVal = parseFloat(speedSlider.value);
+        let fps = 0.1 + (20 - 0.1) * Math.pow(sliderVal, 2);
+        speedValue.textContent = fps.toFixed(2) + " img/s";
+        speedFactor = fps;
+        updateAllVideosSpeed();
+      });
+
+      // Bottone Play/Pausa: alterna la riproduzione di tutti i video.
+      playPauseBtn.addEventListener("click", function(){
+        autoLoopActive = !autoLoopActive;
+        playPauseBtn.textContent = autoLoopActive ? "Pausa" : "Play";
+        updateAllVideosPlayState();
+      });
+
+      // Checkbox per abilitare/disabilitare l'auto-loop; sincronizza anche il bottone.
+      autoLoopCheckbox.addEventListener("change", function(){
+        autoLoopActive = autoLoopCheckbox.checked;
+        playPauseBtn.textContent = autoLoopActive ? "Pausa" : "Play";
+        updateAllVideosPlayState();
+      });
+
+      // Bottone Info: mostra un alert con le informazioni sul funzionamento del programma.
+      infoBtn.addEventListener("click", function(){
+        alert("EMNIST Total Combine Viewer\n\n" +
+          "Questo programma permette di visualizzare i file MP4 'Total Combine' per le classi EMNIST.\n" +
+          "Inserisci una stringa di caratteri EMNIST (numeri, lettere maiuscole o minuscole, esempio:0oa4) e premi 'Carica'.\n" +
+          "Le animazioni vengono suddivise in gruppi 2x2: il primo carattere va in alto a sinistra, il secondo in alto a destra,\n" +
+          "il terzo in basso a sinistra e il quarto in basso a destra. Se ci sono più caratteri, vengono creati ulteriori gruppi.\n\n" +
+          "Utilizza lo slider per regolare la velocità (in immagini al secondo) della riproduzione, da 0.1 a 20 img/s, in maniera non lineare.\n" +
+          "I video si riproducono in loop: al termine, se l'auto-loop è abilitato, si ferma per 2 secondi e riparte da capo.\n\n" +
+          "Usa il bottone Play/Pausa e la checkbox Auto-loop per controllare la riproduzione.");
+      });
+    });
+  </script>
+</body>
+</html>

@@ -22,6 +22,7 @@ This repository explores **Kolmogorov-Arnold Networks (KANs)** in deep learning,
 #### **Grad-CAM Visualization**
 ![GradCAM](https://raw.githubusercontent.com/MaglioloLeonardo/InterpretableKAN/main/Images%20%26%20Videos/DemoGradCAMFeatureMAPExample.gif)
 
+![Click here to view the interactive Grad-CAM visualizer!](http://leonardomagliolo.altervista.org/visualizer/Visualizer.html)
 ---
 
 ### 🔹 2. Spline Evolution in KANs

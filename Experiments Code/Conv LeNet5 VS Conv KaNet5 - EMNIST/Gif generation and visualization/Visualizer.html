@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <title>EMNIST Total Combine Viewer</title>
+  <style>
+    :root {
+      /* Dimensione base (non zoomata) di UNA cella */
+      --base-cell-size: 180px;
+      /* Fattore di zoom (da 0.1 a 10) */
+      --zoom-factor: 1;
+      /* Dimensione effettiva della cella = base × zoom */
+      --cell-size: calc(var(--base-cell-size) * var(--zoom-factor));
+    }
+
+    /* Layout a colonna: header fisso in cima, container che occupa il resto */
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #222;
+      color: #eee;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      margin: 20px 0;
+      gap: 10px;
+      flex: 0 0 auto;
+    }
+    #charInput {
+      width: 200px;
+      padding: 4px;
+      font-size: 16px;
+    }
+    button {
+      font-size: 16px;
+      padding: 5px 10px;
+      cursor: pointer;
+    }
+    /* Slider per la velocità (range 0..1) */
+    #speedSlider {
+      width: 150px;
+    }
+    #speedValue {
+      font-size: 16px;
+      margin-left: 4px;
+    }
+    label {
+      font-size: 16px;
+    }
+    /* Slider per lo zoom: da 0.1 a 10 */
+    #zoomSlider {
+      width: 150px;
+    }
+    #zoomValue {
+      font-size: 16px;
+      margin-left: 4px;
+    }
+
+    /**************************************************
+     * Wrapper esterno per la griglia
+     * - Occupa lo spazio rimanente della viewport
+     * - Permette lo scroll e il panning tramite mouse
+     * - Aggiunto padding per margini
+     **************************************************/
+    #outerWrapper {
+      flex: 1 1 auto;
+      width: 100%;
+      overflow: auto;
+      position: relative;
+      cursor: grab;
+      user-select: none;
+      padding: 10px;
+    }
+
+    /**************************************************
+     * Contenitore per la griglia
+     * - La griglia viene definita dinamicamente in base al numero di video
+     **************************************************/
+    #groupsContainer {
+      display: grid;
+      gap: 6px; /* Gap fisso tra le celle */
+    }
+
+    .videoCell {
+      box-sizing: border-box;
+      background-color: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .videoCell video {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      border: 2px solid #444;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <input id="charInput" type="text" placeholder="Inserisci caratteri EMNIST" maxlength="100" />
+    <button id="loadBtn">Carica</button>
+    
+    <label>
+      Zoom:
+      <input type="range" id="zoomSlider" min="0.1" max="10" step="0.1" value="1" />
+      <span id="zoomValue">1.00×</span>
+    </label>
+    
+    <label>
+      Velocità:
+      <input type="range" id="speedSlider" min="0" max="1" step="0.01" value="0.12" />
+      <span id="speedValue">0.39 img/s</span>
+    </label>
+    
+    <button id="playPauseBtn">Pausa</button>
+    
+    <label>
+      <input type="checkbox" id="autoLoopCheckbox" checked />
+      Auto-loop
+    </label>
+    
+    <button id="infoBtn">Info</button>
+  </header>
+
+  <div id="outerWrapper">
+    <div id="groupsContainer">
+      <!-- I video verranno inseriti dinamicamente -->
+    </div>
+  </div>
+
+  <script>
+    /************************************************
+     * Funzioni per la gestione dei cookie
+     ************************************************/
+    function setCookie(name, value, days) {
+      let expires = "";
+      if (days) {
+        let date = new Date();
+        date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000);
+        expires = "; expires=" + date.toUTCString();
+      }
+      document.cookie = name + "=" + (value || "") + expires + "; path=/";
+    }
+
+    function getCookie(name) {
+      let nameEQ = name + "=";
+      let ca = document.cookie.split(';');
+      for (let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) === ' ') c = c.substring(1);
+        if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+      }
+      return null;
+    }
+
+    /************************************************
+     * Mappa EMNIST: char → classID (0..61)
+     ************************************************/
+    const EMNIST_MAPPING = (() => {
+      const chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+      let map = {};
+      for (let i = 0; i < chars.length; i++){
+        map[chars[i]] = i;
+      }
+      return map;
+    })();
+
+    // Array globale per conservare gli elementi <video>
+    let videos = [];
+    let speedFactor = 0.1 + (20 - 0.1) * Math.pow(0.12, 2); // ~0.39 img/s
+    let autoLoopActive = true;
+    let userHasChangedZoom = false;
+    let currentZoom = 1;
+
+    // Parametri CSS usati in JS
+    const baseCellSize = 180; // px
+    const gridGap = 6;        // px
+
+    // Variabili globali per dimensioni della griglia
+    let gridColumns = 0;
+    let gridRows = 0;
+
+    /************************************************
+     * buildTotalMp4Path: restituisce il path del file MP4
+     ************************************************/
+    function buildTotalMp4Path(cls, ch) {
+      return `../total/class_${cls}_${ch}_total.mp4`;
+    }
+
+    /************************************************
+     * createVideoElement: crea un <video> con autoplay condizionato
+     ************************************************/
+    function createVideoElement(cls, ch) {
+      const video = document.createElement("video");
+      video.className = "mp4Video";
+      video.src = buildTotalMp4Path(cls, ch);
+      video.preload = "auto";
+      video.muted = true;
+      video.playsInline = true;
+
+      video.addEventListener("ended", () => {
+        if (autoLoopActive) {
+          setTimeout(() => {
+            video.currentTime = 0;
+            video.play();
+          }, 2000);
+        }
+      });
+
+      video.playbackRate = speedFactor;
+      video.addEventListener("loadeddata", () => {
+        if (autoLoopActive) {
+          video.play();
+        }
+      });
+      return video;
+    }
+
+    /************************************************
+     * updateAllVideosSpeed: aggiorna playbackRate
+     ************************************************/
+    function updateAllVideosSpeed() {
+      videos.forEach(video => {
+        video.playbackRate = speedFactor;
+      });
+    }
+
+    /************************************************
+     * updateAllVideosPlayState: play/pause
+     ************************************************/
+    function updateAllVideosPlayState() {
+      videos.forEach(video => {
+        if (autoLoopActive) {
+          video.play();
+        } else {
+          video.pause();
+        }
+      });
+    }
+
+    /************************************************
+     * loadTotalVideosForString: carica i video EMNIST
+     * in una griglia mxn che si adatta al rateo dell'area disponibile
+     ************************************************/
+    function loadTotalVideosForString(str) {
+      const container = document.getElementById("groupsContainer");
+      container.innerHTML = "";
+      videos = [];
+
+      let validChars = [];
+      for (let ch of str) {
+        if (ch in EMNIST_MAPPING) {
+          validChars.push(ch);
+        } else {
+          alert(`Carattere non valido: ${ch}`);
+          return;
+        }
+      }
+      if (validChars.length === 0) {
+        alert("Inserisci almeno un carattere EMNIST!");
+        return;
+      }
+
+      // Ottieni le dimensioni disponibili dall'outerWrapper
+      const outerWrapper = document.getElementById("outerWrapper");
+      const availableWidth = outerWrapper.clientWidth;
+      const availableHeight = outerWrapper.clientHeight;
+      const numVideos = validChars.length;
+
+      // Calcola colonne e righe per adattarsi all'aspect ratio dell'area disponibile
+      // Heuristica: colonne = ceil(sqrt(numVideos * (availableWidth/availableHeight)))
+      // e righe = ceil(numVideos / colonne)
+      const columns = Math.ceil(Math.sqrt(numVideos * (availableWidth / availableHeight)));
+      const rows = Math.ceil(numVideos / columns);
+      gridColumns = columns;
+      gridRows = rows;
+
+      container.style.gridTemplateColumns = `repeat(${columns}, var(--cell-size))`;
+      container.style.gridTemplateRows = `repeat(${rows}, var(--cell-size))`;
+
+      // Popola le celle con i video
+      validChars.forEach(ch => {
+        const cellDiv = document.createElement("div");
+        cellDiv.className = "videoCell";
+        const cls = EMNIST_MAPPING[ch];
+        const video = createVideoElement(cls, ch);
+        cellDiv.appendChild(video);
+        videos.push(video);
+        container.appendChild(cellDiv);
+      });
+
+      // Aggiungi celle vuote se necessario per completare la griglia
+      for (let i = validChars.length; i < rows * columns; i++) {
+        const emptyCell = document.createElement("div");
+        emptyCell.className = "videoCell";
+        container.appendChild(emptyCell);
+      }
+
+      updateAllVideosSpeed();
+      updateAllVideosPlayState();
+
+      // Calcola lo zoom per far rientrare l'intera griglia nell'area disponibile
+      autoFitZoom(true);
+    }
+
+    /************************************************
+     * autoFitZoom: calcola un fattore di zoom per contenere
+     * l'intera griglia nell'area disponibile.
+     *
+     * Se force = true, ignora un eventuale zoom manuale scelto dall’utente.
+     ************************************************/
+    function autoFitZoom(force = false) {
+      if (!force && userHasChangedZoom) return;
+
+      const outerWrapper = document.getElementById("outerWrapper");
+      const availableWidth = outerWrapper.clientWidth;
+      const availableHeight = outerWrapper.clientHeight;
+
+      // Calcola il fattore di zoom in base alle colonne e alle righe
+      const zoomWidth = (availableWidth - (gridColumns - 1) * gridGap) / (gridColumns * baseCellSize);
+      const zoomHeight = (availableHeight - (gridRows - 1) * gridGap) / (gridRows * baseCellSize);
+
+      let newZoom = Math.min(zoomWidth, zoomHeight);
+      newZoom = Math.max(0.1, Math.min(10, newZoom));
+
+      applyZoom(newZoom);
+      // Aggiorna lo slider
+      document.getElementById("zoomSlider").value = newZoom;
+    }
+
+    /************************************************
+     * applyZoom: imposta il fattore di zoom
+     ************************************************/
+    function applyZoom(factor) {
+      currentZoom = factor;
+      document.documentElement.style.setProperty('--zoom-factor', factor);
+      document.getElementById("zoomValue").textContent = factor.toFixed(2) + "×";
+    }
+
+    /************************************************
+     * enableDragScrolling: panning con drag del mouse
+     ************************************************/
+    function enableDragScrolling() {
+      const outerWrapper = document.getElementById("outerWrapper");
+      let isDragging = false;
+      let startX, startY, scrollLeft, scrollTop;
+
+      outerWrapper.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        outerWrapper.style.cursor = "grabbing";
+        startX = e.pageX - outerWrapper.offsetLeft;
+        startY = e.pageY - outerWrapper.offsetTop;
+        scrollLeft = outerWrapper.scrollLeft;
+        scrollTop = outerWrapper.scrollTop;
+        e.preventDefault();
+      });
+
+      outerWrapper.addEventListener('mouseleave', () => {
+        isDragging = false;
+        outerWrapper.style.cursor = "grab";
+      });
+
+      outerWrapper.addEventListener('mouseup', () => {
+        isDragging = false;
+        outerWrapper.style.cursor = "grab";
+      });
+
+      outerWrapper.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        e.preventDefault();
+        const x = e.pageX - outerWrapper.offsetLeft;
+        const y = e.pageY - outerWrapper.offsetTop;
+        const walkX = x - startX;
+        const walkY = y - startY;
+        outerWrapper.scrollLeft = scrollLeft - walkX;
+        outerWrapper.scrollTop = scrollTop - walkY;
+      });
+    }
+
+    /************************************************
+     * enableWheelZoom: zoom con ctrl + rotellina
+     * Se l'utente usa la rotellina con ctrl, oltre a modificare il zoom,
+     * si adatta lo scroll dell'outerWrapper in modo che il punto sotto il cursore rimanga stabile.
+     * Il fattore di variazione è stato aumentato per rendere il controllo più sensibile.
+     ************************************************/
+    function enableWheelZoom() {
+      const outerWrapper = document.getElementById("outerWrapper");
+      // Imposta la sensibilità per il delta (maggiore valore = zoom più rapido)
+      const zoomSensitivity = 0.003;
+      outerWrapper.addEventListener('wheel', (e) => {
+        if (e.ctrlKey) {
+          e.preventDefault();
+          // Cattura la posizione del cursore relativa all'outerWrapper
+          const rect = outerWrapper.getBoundingClientRect();
+          const mouseX = e.clientX;
+          const mouseY = e.clientY;
+          const offsetX = mouseX - rect.left + outerWrapper.scrollLeft;
+          const offsetY = mouseY - rect.top + outerWrapper.scrollTop;
+          const oldZoom = currentZoom;
+          let newZoom = oldZoom - e.deltaY * zoomSensitivity;
+          newZoom = Math.max(0.1, Math.min(10, newZoom));
+          // Applica il nuovo zoom e aggiorna lo slider
+          applyZoom(newZoom);
+          document.getElementById("zoomSlider").value = newZoom;
+          // Calcola il rapporto di scala e aggiorna lo scroll per mantenere il punto fisso
+          const scale = newZoom / oldZoom;
+          outerWrapper.scrollLeft = offsetX * scale - (mouseX - rect.left);
+          outerWrapper.scrollTop = offsetY * scale - (mouseY - rect.top);
+        }
+      }, { passive: false });
+    }
+
+    /************************************************
+     * Messaggio informativo (stesso usato dal bottone Info)
+     ************************************************/
+    function showInfoMessage() {
+      alert("EMNIST Total Combine Viewer\n\n" +
+            "Visualizza i file MP4 'Total Combine' per le classi EMNIST.\n" +
+            "Inserisci una stringa (es. 0aB2) e premi 'Carica'.\n\n" +
+            "Velocità: regola lo slider (0..1) per modificare il playback da 0.1 a 20 img/s.\n" +
+            "Play/Pausa e Auto-loop: controllano la riproduzione dei video.\n" +
+            "Zoom: ingrandisce le celle (fino a ×10). Puoi zoommare anche con Ctrl + rotellina (con spostamento automatico del contenuto) oppure usare lo slider per modificare il fattore di zoom senza spostare la visuale.\n" +
+            "Trascina il container (cursore 'grab') per esplorare la griglia.");
+    }
+
+    /************************************************
+     * Inizializzazione
+     ************************************************/
+    window.addEventListener("DOMContentLoaded", () => {
+      const charInput = document.getElementById("charInput");
+      const loadBtn = document.getElementById("loadBtn");
+      const speedSlider = document.getElementById("speedSlider");
+      const speedValue = document.getElementById("speedValue");
+      const playPauseBtn = document.getElementById("playPauseBtn");
+      const autoLoopCheckbox = document.getElementById("autoLoopCheckbox");
+      const infoBtn = document.getElementById("infoBtn");
+      const zoomSlider = document.getElementById("zoomSlider");
+
+      enableDragScrolling();
+      enableWheelZoom();
+
+      // Carica un carattere di default
+      charInput.value = "0";
+      loadTotalVideosForString("0");
+
+      // Bottone "Carica"
+      loadBtn.addEventListener("click", () => {
+        autoLoopActive = true;
+        autoLoopCheckbox.checked = true;
+        playPauseBtn.textContent = "Pausa";
+        const val = charInput.value.trim();
+        if(val === ""){
+          alert("Inserisci almeno un carattere EMNIST!");
+          return;
+        }
+        loadTotalVideosForString(val);
+      });
+
+      // Slider velocità
+      speedSlider.addEventListener("input", () => {
+        let sliderVal = parseFloat(speedSlider.value);
+        let fps = 0.1 + (20 - 0.1) * Math.pow(sliderVal, 2);
+        speedValue.textContent = fps.toFixed(2) + " img/s";
+        speedFactor = fps;
+        updateAllVideosSpeed();
+      });
+
+      // Bottone Play/Pausa
+      playPauseBtn.addEventListener("click", () => {
+        autoLoopActive = !autoLoopActive;
+        playPauseBtn.textContent = autoLoopActive ? "Pausa" : "Play";
+        updateAllVideosPlayState();
+      });
+
+      // Auto-loop
+      autoLoopCheckbox.addEventListener("change", () => {
+        autoLoopActive = autoLoopCheckbox.checked;
+        playPauseBtn.textContent = autoLoopActive ? "Pausa" : "Play";
+        updateAllVideosPlayState();
+      });
+
+      // Bottone Info
+      infoBtn.addEventListener("click", () => {
+        showInfoMessage();
+      });
+
+      // Slider zoom manuale (non sposta la visuale)
+      zoomSlider.addEventListener("input", () => {
+        userHasChangedZoom = true;
+        const newZoom = parseFloat(zoomSlider.value);
+        applyZoom(newZoom);
+      });
+    });
+
+    // Mostra il messaggio informativo SOLO alla prima apertura, dopo che la pagina è stata completamente caricata
+    window.addEventListener("load", () => {
+      if (!getCookie("visited")) {
+        showInfoMessage();
+        setCookie("visited", "true", 365);
+      }
+    });
+  </script>
+</body>
+</html>

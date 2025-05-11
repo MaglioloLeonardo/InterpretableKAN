@@ -204,9 +204,6 @@ def main():
     images_train = read_idx_images(train_images_path)
     labels_train = read_idx_labels(train_labels_path)
 
-    # Conversione in tensori (senza normalizzazione tra 0 e 1, come richiesto)
-    # Nota: Il modello è stato addestrato su dati normalizzati, ma l'utente richiede di non normalizzare
-    # Pertanto, le statistiche potrebbero essere influenzate negativamente
     train_images_tensor = torch.from_numpy(images_train.copy()).unsqueeze(1).float()
     train_labels_tensor = torch.from_numpy(labels_train.copy()).long()
     test_images_tensor = torch.from_numpy(images_test.copy()).unsqueeze(1).float()
